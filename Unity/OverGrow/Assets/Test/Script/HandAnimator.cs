@@ -20,6 +20,8 @@ public sealed class HandAnimator : MonoBehaviour
     [SerializeField] Material _boneMaterial = null;
     [Space]
     [SerializeField] RawImage _monitorUI = null;
+    [Space]
+    [SerializeField] GameObject _cubeObject = null; // Reference to the cube object
 
     #endregion
 
@@ -63,10 +65,24 @@ public sealed class HandAnimator : MonoBehaviour
       => _pipeline = new HandPipeline(_resources);
 
     void OnDestroy()
-      => _pipeline.Dispose();
+    {
+        // Ensure proper disposal of the pipeline
+        if (_pipeline != null)
+        {
+            _pipeline.Dispose();
+            _pipeline = null;
+        }
+    }
 
     void LateUpdate()
     {
+        // Check if _cubeObject is assigned
+        if (_cubeObject == null)
+        {
+            Debug.LogError("Cube object is not assigned in HandAnimator script!");
+            return;
+        }
+
         // Feed the input image to the Hand pose pipeline.
         _pipeline.UseAsyncReadback = _useAsyncReadback;
         _pipeline.ProcessImage(_source.Texture);
@@ -116,6 +132,7 @@ public sealed class HandAnimator : MonoBehaviour
         if (IsFistGesture(jointCoordinates))
         {
             Debug.Log("Fist gesture detected!");
+            MoveCube(jointCoordinates[0]); // Move the cube based on the wrist position (joint 0)
         }
     }
 
@@ -159,6 +176,27 @@ public sealed class HandAnimator : MonoBehaviour
         }
 
         return true;
+    }
+
+    void MoveCube(Vector3 handPosition)
+    {
+        // Check if Camera.main is null
+        if (Camera.main == null)
+        {
+            Debug.LogError("Main camera is not found!");
+            return;
+        }
+
+        // Convert hand position to world position
+        Vector3 screenPosition = new Vector3(handPosition.x * Screen.width, (1 - handPosition.y) * Screen.height, Camera.main.nearClipPlane);
+        Vector3 worldPosition = Camera.main.ScreenToWorldPoint(screenPosition);
+
+        // Debugging
+        Debug.Log($"Hand position: {handPosition}");
+        Debug.Log($"Screen position: {screenPosition}");
+        Debug.Log($"World position: {worldPosition}");
+
+        _cubeObject.transform.position = new Vector3(worldPosition.x, worldPosition.y, _cubeObject.transform.position.z);
     }
 
     #endregion
