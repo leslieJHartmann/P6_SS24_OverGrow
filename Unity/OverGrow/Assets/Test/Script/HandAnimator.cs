@@ -41,6 +41,9 @@ public sealed class HandAnimator : MonoBehaviour
         (0, 17), (2, 5), (5, 9), (9, 13), (13, 17)  // Palm
     };
 
+    static readonly int[] FingertipIndices = { 4, 8, 12, 16, 20 };
+    static readonly int[] LowerFingerIndices = { 3, 7, 11, 15, 19 };
+
     Matrix4x4 CalculateJointXform(Vector3 pos)
       => Matrix4x4.TRS(pos, Quaternion.identity, Vector3.one * 0.07f);
 
@@ -117,8 +120,15 @@ public sealed class HandAnimator : MonoBehaviour
         // Output the hand center coordinates
         Debug.Log($"Hand Center: {handCenter}");
 
-        // Move the cube to the hand center
-        MoveCube(handCenter);
+        // Check if hand is in a fist gesture
+        bool isHandClosed = IsFistGesture(jointCoordinates);
+        Debug.Log($"Hand is closed: {isHandClosed}");
+
+        // Move the cube if the hand is closed
+        if (isHandClosed)
+        {
+            MoveCube(handCenter);
+        }
     }
 
     Vector3 CalculateHandCenter(List<Vector3> jointCoordinates)
@@ -159,6 +169,26 @@ public sealed class HandAnimator : MonoBehaviour
             worldPosition.y * _movementScale, // Apply scaling to y-axis
             _cubeObject.transform.position.z // Keep the z-axis unchanged
         );
+    }
+
+    bool IsFistGesture(List<Vector3> jointCoordinates)
+    {
+        // Check distances between fingertip joints and their corresponding lower joints
+        for (int i = 0; i < FingertipIndices.Length; i++)
+        {
+            var fingertip = jointCoordinates[FingertipIndices[i]];
+            var lowerFinger = jointCoordinates[LowerFingerIndices[i]];
+
+            // Adjust the distance threshold as needed
+            float distanceThreshold = 0.05f;
+
+            if (Vector3.Distance(fingertip, lowerFinger) > distanceThreshold)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     #endregion
