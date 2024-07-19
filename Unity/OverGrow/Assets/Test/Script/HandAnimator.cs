@@ -22,6 +22,8 @@ public sealed class HandAnimator : MonoBehaviour
     [SerializeField] RawImage _monitorUI = null;
     [Space]
     [SerializeField] GameObject _cubeObject = null; // Reference to the cube object
+    [Space]
+    [SerializeField] float _movementScale = 1.0f; // Scaling factor for cube movement
 
     #endregion
 
@@ -38,9 +40,6 @@ public sealed class HandAnimator : MonoBehaviour
         (17, 18), (18, 19), (19, 20),               // Pinky
         (0, 17), (2, 5), (5, 9), (9, 13), (13, 17)  // Palm
     };
-
-    static readonly int[] FingertipIndices = { 4, 8, 12, 16, 20 };
-    static readonly int[] LowerFingerIndices = { 3, 7, 11, 15, 19 };
 
     Matrix4x4 CalculateJointXform(Vector3 pos)
       => Matrix4x4.TRS(pos, Quaternion.identity, Vector3.one * 0.07f);
@@ -62,11 +61,17 @@ public sealed class HandAnimator : MonoBehaviour
     #region MonoBehaviour implementation
 
     void Start()
-      => _pipeline = new HandPipeline(_resources);
+    {
+        _pipeline = new HandPipeline(_resources);
+
+        if (_cubeObject == null)
+        {
+            Debug.LogError("Cube object is not assigned in HandAnimator script!");
+        }
+    }
 
     void OnDestroy()
     {
-        // Ensure proper disposal of the pipeline
         if (_pipeline != null)
         {
             _pipeline.Dispose();
@@ -74,130 +79,93 @@ public sealed class HandAnimator : MonoBehaviour
         }
     }
 
-    void LateUpdate()
+void LateUpdate()
+{
+    // Feed the input image to the Hand pose pipeline.
+    _pipeline.UseAsyncReadback = _useAsyncReadback;
+    _pipeline.ProcessImage(_source.Texture);
+
+    var layer = gameObject.layer;
+
+    // List to store joint coordinates
+    List<Vector3> jointCoordinates = new List<Vector3>();
+
+    // Joint balls
+    for (var i = 0; i < HandPipeline.KeyPointCount; i++)
     {
-        // Check if _cubeObject is assigned
-        if (_cubeObject == null)
-        {
-            Debug.LogError("Cube object is not assigned in HandAnimator script!");
-            return;
-        }
-
-        // Feed the input image to the Hand pose pipeline.
-        _pipeline.UseAsyncReadback = _useAsyncReadback;
-        _pipeline.ProcessImage(_source.Texture);
-
-        var layer = gameObject.layer;
-
-        // List to store joint coordinates
-        List<Vector3> jointCoordinates = new List<Vector3>();
-
-        // List to store fingertip coordinates
-        List<Vector3> fingertipCoordinates = new List<Vector3>();
-
-        // Joint balls
-        for (var i = 0; i < HandPipeline.KeyPointCount; i++)
-        {
-            var position = _pipeline.GetKeyPoint(i);
-            jointCoordinates.Add(position);
-            var xform = CalculateJointXform(position);
-            Graphics.DrawMesh(_jointMesh, xform, _jointMaterial, layer);
-
-            // Check if the joint is a fingertip
-            if (System.Array.IndexOf(FingertipIndices, i) >= 0)
-            {
-                fingertipCoordinates.Add(position);
-            }
-        }
-
-        // Bones
-        foreach (var pair in BonePairs)
-        {
-            var p1 = _pipeline.GetKeyPoint(pair.Item1);
-            var p2 = _pipeline.GetKeyPoint(pair.Item2);
-            var xform = CalculateBoneXform(p1, p2);
-            Graphics.DrawMesh(_boneMesh, xform, _boneMaterial, layer);
-        }
-
-        // UI update
-        _monitorUI.texture = _source.Texture;
-
-        // Output joint coordinates
-        OutputJointCoordinates(jointCoordinates);
-
-        // Output fingertip coordinates
-        OutputFingertipCoordinates(fingertipCoordinates);
-
-        // Check if the hand is in a fist gesture
-        if (IsFistGesture(jointCoordinates))
-        {
-            Debug.Log("Fist gesture detected!");
-            MoveCube(jointCoordinates[0]); // Move the cube based on the wrist position (joint 0)
-        }
+        var position = _pipeline.GetKeyPoint(i);
+        jointCoordinates.Add(position);
+        var xform = CalculateJointXform(position);
+        Graphics.DrawMesh(_jointMesh, xform, _jointMaterial, layer);
     }
 
-    void OutputJointCoordinates(List<Vector3> jointCoordinates)
+    // Bones
+    foreach (var pair in BonePairs)
     {
-        // Example: Log the coordinates to the console
-        for (int i = 0; i < jointCoordinates.Count; i++)
-        {
-            Debug.Log($"Joint {i}: {jointCoordinates[i]}");
-        }
-
-        // Optionally, you can store the coordinates in a file or use them elsewhere
+        var p1 = _pipeline.GetKeyPoint(pair.Item1);
+        var p2 = _pipeline.GetKeyPoint(pair.Item2);
+        var xform = CalculateBoneXform(p1, p2);
+        Graphics.DrawMesh(_boneMesh, xform, _boneMaterial, layer);
     }
 
-    void OutputFingertipCoordinates(List<Vector3> fingertipCoordinates)
-    {
-        // Example: Log the coordinates to the console
-        for (int i = 0; i < fingertipCoordinates.Count; i++)
-        {
-            Debug.Log($"Fingertip {i}: {fingertipCoordinates[i]}");
-        }
+    // UI update
+    _monitorUI.texture = _source.Texture;
 
-        // Optionally, you can store the coordinates in a file or use them elsewhere
+    // Calculate the center of the hand
+    Vector3 handCenter = CalculateHandCenter(jointCoordinates);
+
+    // Output the hand center coordinates
+    Debug.Log($"Hand Center: {handCenter}");
+
+    // Move the cube to the hand center
+    MoveCube(handCenter);
+}
+
+Vector3 CalculateHandCenter(List<Vector3> jointCoordinates)
+{
+    if (jointCoordinates.Count == 0)
+        return Vector3.zero;
+
+    Vector3 sum = Vector3.zero;
+    foreach (var coord in jointCoordinates)
+    {
+        sum += coord;
+    }
+    return sum / jointCoordinates.Count;
+}
+
+
+void MoveCube(Vector3 handPosition)
+{
+    // Ensure Camera.main is not null
+    if (Camera.main == null)
+    {
+        Debug.LogError("Main camera is not found!");
+        return;
     }
 
-    bool IsFistGesture(List<Vector3> jointCoordinates)
-    {
-        // Check distances between fingertip joints and their corresponding lower joints
-        for (int i = 0; i < FingertipIndices.Length; i++)
-        {
-            var fingertip = jointCoordinates[FingertipIndices[i]];
-            var lowerFinger = jointCoordinates[LowerFingerIndices[i]];
+    // Convert handPosition from normalized to screen coordinates
+    Vector3 screenPosition = new Vector3(
+        (handPosition.x + 1) * 0.5f * Screen.width, // Map x from [-1, 1] to [0, Screen.width]
+        (handPosition.y + 1) * 0.5f * Screen.height, // Map y from [-1, 1] to [0, Screen.height]
+        Camera.main.nearClipPlane // Set z to the near clip plane of the camera
+    );
 
-            // Adjust the distance threshold as needed
-            float distanceThreshold = 0.05f;
+    // Convert screen position to world position
+    Vector3 worldPosition = Camera.main.ScreenToWorldPoint(screenPosition);
 
-            if (Vector3.Distance(fingertip, lowerFinger) > distanceThreshold)
-            {
-                return false;
-            }
-        }
+    // Use a scaling factor to adjust movement sensitivity
+    float movementScale = 10.0f; // Adjust this value to scale movement appropriately
 
-        return true;
-    }
+    // Set the cube's position to match the hand's position in world coordinates
+    _cubeObject.transform.position = new Vector3(
+        worldPosition.x * movementScale, // Apply scaling to x-axis
+        worldPosition.y * movementScale, // Apply scaling to y-axis
+        _cubeObject.transform.position.z // Keep the z-axis unchanged
+    );
+}
 
-    void MoveCube(Vector3 handPosition)
-    {
-        // Check if Camera.main is null
-        if (Camera.main == null)
-        {
-            Debug.LogError("Main camera is not found!");
-            return;
-        }
 
-        // Convert hand position to world position
-        Vector3 screenPosition = new Vector3(handPosition.x * Screen.width, (1 - handPosition.y) * Screen.height, Camera.main.nearClipPlane);
-        Vector3 worldPosition = Camera.main.ScreenToWorldPoint(screenPosition);
-
-        // Debugging
-        Debug.Log($"Hand position: {handPosition}");
-        Debug.Log($"Screen position: {screenPosition}");
-        Debug.Log($"World position: {worldPosition}");
-
-        _cubeObject.transform.position = new Vector3(worldPosition.x, worldPosition.y, _cubeObject.transform.position.z);
-    }
 
     #endregion
 }

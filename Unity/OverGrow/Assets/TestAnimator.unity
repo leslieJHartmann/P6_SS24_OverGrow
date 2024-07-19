@@ -291,7 +291,7 @@ MonoBehaviour:
   _textureUrl: 
   _video: {fileID: 0}
   _videoUrl: 
-  _webcamName: 
+  _webcamName: Logi C270 HD WebCam
   _webcamResolution: {x: 1920, y: 1080}
   _webcamFrameRate: 30
   _outputTexture: {fileID: 0}
@@ -603,7 +603,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: cdad6d7cc5a964174b77ba91edb59d2e, type: 2}
+  - {fileID: 2100000, guid: 1a79660b88eb2a145be0e6bf1a282672, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
