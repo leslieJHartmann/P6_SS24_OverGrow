@@ -23,7 +23,7 @@ public sealed class HandAnimator : MonoBehaviour
     [Space]
     [SerializeField] GameObject _cubeObject = null; // Reference to the cube object
     [Space]
-    [SerializeField] float _movementScale = 1.0f; // Scaling factor for cube movement
+    [SerializeField] float _movementScale = 10.0f; // Scaling factor for cube movement
 
     #endregion
 
@@ -79,93 +79,87 @@ public sealed class HandAnimator : MonoBehaviour
         }
     }
 
-void LateUpdate()
-{
-    // Feed the input image to the Hand pose pipeline.
-    _pipeline.UseAsyncReadback = _useAsyncReadback;
-    _pipeline.ProcessImage(_source.Texture);
-
-    var layer = gameObject.layer;
-
-    // List to store joint coordinates
-    List<Vector3> jointCoordinates = new List<Vector3>();
-
-    // Joint balls
-    for (var i = 0; i < HandPipeline.KeyPointCount; i++)
+    void LateUpdate()
     {
-        var position = _pipeline.GetKeyPoint(i);
-        jointCoordinates.Add(position);
-        var xform = CalculateJointXform(position);
-        Graphics.DrawMesh(_jointMesh, xform, _jointMaterial, layer);
+        // Feed the input image to the Hand pose pipeline.
+        _pipeline.UseAsyncReadback = _useAsyncReadback;
+        _pipeline.ProcessImage(_source.Texture);
+
+        var layer = gameObject.layer;
+
+        // List to store joint coordinates
+        List<Vector3> jointCoordinates = new List<Vector3>();
+
+        // Joint balls
+        for (var i = 0; i < HandPipeline.KeyPointCount; i++)
+        {
+            var position = _pipeline.GetKeyPoint(i);
+            jointCoordinates.Add(position);
+            var xform = CalculateJointXform(position);
+            Graphics.DrawMesh(_jointMesh, xform, _jointMaterial, layer);
+        }
+
+        // Bones
+        foreach (var pair in BonePairs)
+        {
+            var p1 = _pipeline.GetKeyPoint(pair.Item1);
+            var p2 = _pipeline.GetKeyPoint(pair.Item2);
+            var xform = CalculateBoneXform(p1, p2);
+            Graphics.DrawMesh(_boneMesh, xform, _boneMaterial, layer);
+        }
+
+        // UI update
+        _monitorUI.texture = _source.Texture;
+
+        // Calculate the center of the hand
+        Vector3 handCenter = CalculateHandCenter(jointCoordinates);
+
+        // Output the hand center coordinates
+        Debug.Log($"Hand Center: {handCenter}");
+
+        // Move the cube to the hand center
+        MoveCube(handCenter);
     }
 
-    // Bones
-    foreach (var pair in BonePairs)
+    Vector3 CalculateHandCenter(List<Vector3> jointCoordinates)
     {
-        var p1 = _pipeline.GetKeyPoint(pair.Item1);
-        var p2 = _pipeline.GetKeyPoint(pair.Item2);
-        var xform = CalculateBoneXform(p1, p2);
-        Graphics.DrawMesh(_boneMesh, xform, _boneMaterial, layer);
+        if (jointCoordinates.Count == 0)
+            return Vector3.zero;
+
+        Vector3 sum = Vector3.zero;
+        foreach (var coord in jointCoordinates)
+        {
+            sum += coord;
+        }
+        return sum / jointCoordinates.Count;
     }
 
-    // UI update
-    _monitorUI.texture = _source.Texture;
-
-    // Calculate the center of the hand
-    Vector3 handCenter = CalculateHandCenter(jointCoordinates);
-
-    // Output the hand center coordinates
-    Debug.Log($"Hand Center: {handCenter}");
-
-    // Move the cube to the hand center
-    MoveCube(handCenter);
-}
-
-Vector3 CalculateHandCenter(List<Vector3> jointCoordinates)
-{
-    if (jointCoordinates.Count == 0)
-        return Vector3.zero;
-
-    Vector3 sum = Vector3.zero;
-    foreach (var coord in jointCoordinates)
+    void MoveCube(Vector3 handPosition)
     {
-        sum += coord;
+        // Ensure Camera.main is not null
+        if (Camera.main == null)
+        {
+            Debug.LogError("Main camera is not found!");
+            return;
+        }
+
+        // Convert handPosition from normalized to screen coordinates
+        Vector3 screenPosition = new Vector3(
+            (handPosition.x + 1) * 0.5f * Screen.width, // Map x from [-1, 1] to [0, Screen.width]
+            (handPosition.y + 1) * 0.5f * Screen.height, // Map y from [-1, 1] to [0, Screen.height]
+            Camera.main.nearClipPlane // Set z to the near clip plane of the camera
+        );
+
+        // Convert screen position to world position
+        Vector3 worldPosition = Camera.main.ScreenToWorldPoint(screenPosition);
+
+        // Set the cube's position to match the hand's position in world coordinates
+        _cubeObject.transform.position = new Vector3(
+            worldPosition.x * _movementScale, // Apply scaling to x-axis
+            worldPosition.y * _movementScale, // Apply scaling to y-axis
+            _cubeObject.transform.position.z // Keep the z-axis unchanged
+        );
     }
-    return sum / jointCoordinates.Count;
-}
-
-
-void MoveCube(Vector3 handPosition)
-{
-    // Ensure Camera.main is not null
-    if (Camera.main == null)
-    {
-        Debug.LogError("Main camera is not found!");
-        return;
-    }
-
-    // Convert handPosition from normalized to screen coordinates
-    Vector3 screenPosition = new Vector3(
-        (handPosition.x + 1) * 0.5f * Screen.width, // Map x from [-1, 1] to [0, Screen.width]
-        (handPosition.y + 1) * 0.5f * Screen.height, // Map y from [-1, 1] to [0, Screen.height]
-        Camera.main.nearClipPlane // Set z to the near clip plane of the camera
-    );
-
-    // Convert screen position to world position
-    Vector3 worldPosition = Camera.main.ScreenToWorldPoint(screenPosition);
-
-    // Use a scaling factor to adjust movement sensitivity
-    float movementScale = 10.0f; // Adjust this value to scale movement appropriately
-
-    // Set the cube's position to match the hand's position in world coordinates
-    _cubeObject.transform.position = new Vector3(
-        worldPosition.x * movementScale, // Apply scaling to x-axis
-        worldPosition.y * movementScale, // Apply scaling to y-axis
-        _cubeObject.transform.position.z // Keep the z-axis unchanged
-    );
-}
-
-
 
     #endregion
 }
