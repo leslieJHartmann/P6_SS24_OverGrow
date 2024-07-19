@@ -114,20 +114,30 @@ public sealed class HandAnimator : MonoBehaviour
         // UI update
         _monitorUI.texture = _source.Texture;
 
-        // Calculate the center of the hand
-        Vector3 handCenter = CalculateHandCenter(jointCoordinates);
+        // Check if a hand is detected
+        bool isHandDetected = IsHandDetected(jointCoordinates);
 
-        // Output the hand center coordinates
-        Debug.Log($"Hand Center: {handCenter}");
-
-        // Check if hand is in a fist gesture
-        bool isHandClosed = IsFistGesture(jointCoordinates);
-        Debug.Log($"Hand is closed: {isHandClosed}");
-
-        // Move the cube if the hand is closed
-        if (isHandClosed)
+        if (isHandDetected)
         {
-            MoveCube(handCenter);
+            // Calculate the center of the hand
+            Vector3 handCenter = CalculateHandCenter(jointCoordinates);
+
+            // Output the hand center coordinates
+            Debug.Log($"Hand Center: {handCenter}");
+
+            // Check if hand is in a fist gesture
+            bool isHandClosed = IsFistGesture(jointCoordinates);
+            Debug.Log($"Hand is closed: {isHandClosed}");
+
+            // Move the cube if the hand is closed
+            if (isHandClosed)
+            {
+                MoveCube(handCenter);
+            }
+        }
+        else
+        {
+            Debug.Log("No hand detected.");
         }
     }
 
@@ -189,6 +199,35 @@ public sealed class HandAnimator : MonoBehaviour
         }
 
         return true;
+    }
+
+    bool IsHandDetected(List<Vector3> jointCoordinates)
+    {
+        // Ensure that a sufficient number of keypoints are detected
+        if (jointCoordinates.Count < HandPipeline.KeyPointCount)
+        {
+            return false;
+        }
+
+        // Check if the average distance between keypoints is within a reasonable range
+        float averageDistance = 0.0f;
+        int count = 0;
+
+        for (int i = 0; i < FingertipIndices.Length; i++)
+        {
+            var fingertip = jointCoordinates[FingertipIndices[i]];
+            var lowerFinger = jointCoordinates[LowerFingerIndices[i]];
+
+            averageDistance += Vector3.Distance(fingertip, lowerFinger);
+            count++;
+        }
+
+        averageDistance /= count;
+
+        // Define a reasonable threshold for average distance to determine if the hand is present
+        float handDetectionThreshold = 0.1f;
+
+        return averageDistance < handDetectionThreshold;
     }
 
     #endregion
